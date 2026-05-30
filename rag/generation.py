@@ -1,5 +1,6 @@
-"""Local generation via vllm (default) or llama-cpp-python (fallback)."""
+"""Local generation via vllm, llama-cpp-python, or an OpenAI-compatible HTTP server (sglang)."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from rag.config import Generator as GeneratorCfg
@@ -19,11 +20,20 @@ def _user_message(context_str: str, query: str) -> str:
     return f"Контекст:\n{context_str}\n\nВопрос: {query}\n\nОтвет:"
 
 
+def _messages(ctx: GroundingContext) -> list[dict]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": _user_message(ctx.context_str, ctx.query)},
+    ]
+
+
 class Generator:
     def __init__(self, cfg: GeneratorCfg, seed: int) -> None:
         self.cfg = cfg
         if cfg.backend == "vllm":
             self._init_vllm(seed)
+        elif cfg.backend == "openai_api":
+            self._init_openai_api()
         else:
             self._init_llama_cpp(seed)
 
@@ -52,6 +62,17 @@ class Generator:
             max_tokens=self.cfg.max_new_tokens,
         )
 
+    def _init_openai_api(self) -> None:
+        from openai import OpenAI
+
+        self._client = OpenAI(
+            base_url=self.cfg.base_url,
+            api_key=self.cfg.api_key or "EMPTY",
+            timeout=self.cfg.request_timeout,
+            max_retries=2,
+        )
+        self._executor = ThreadPoolExecutor(max_workers=max(1, self.cfg.max_concurrency))
+
     def _init_llama_cpp(self, seed: int) -> None:
         from llama_cpp import Llama
 
@@ -74,12 +95,8 @@ class Generator:
         )
 
     def _format_vllm_prompt(self, ctx: GroundingContext) -> str:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _user_message(ctx.context_str, ctx.query)},
-        ]
         return self._tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            _messages(ctx), tokenize=False, add_generation_prompt=True
         )
 
     def generate(self, ctx: GroundingContext) -> str:
@@ -90,17 +107,32 @@ class Generator:
             prompts = [self._format_vllm_prompt(ctx) for ctx in contexts]
             outputs = self._llm.generate(prompts, self._sampling_params)
             return [o.outputs[0].text.strip() for o in outputs]
-        else:
-            return [self._generate_llama_cpp(ctx) for ctx in contexts]
+        if self.cfg.backend == "openai_api":
+            return self._generate_openai_api_batch(contexts)
+        return [self._generate_llama_cpp(ctx) for ctx in contexts]
+
+    def _generate_openai_api_batch(self, contexts: list[GroundingContext]) -> list[str]:
+        if not contexts:
+            return []
+        return list(self._executor.map(self._generate_openai_api_one, contexts))
+
+    def _generate_openai_api_one(self, ctx: GroundingContext) -> str:
+        if not ctx.context_str.strip():
+            return ""
+        resp = self._client.chat.completions.create(
+            model=self.cfg.model,
+            messages=_messages(ctx),
+            temperature=self.cfg.temperature,
+            top_p=self.cfg.top_p,
+            max_tokens=self.cfg.max_new_tokens,
+        )
+        return (resp.choices[0].message.content or "").strip()
 
     def _generate_llama_cpp(self, ctx: GroundingContext) -> str:
         if not ctx.context_str.strip():
             return ""
         out = self._llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _user_message(ctx.context_str, ctx.query)},
-            ],
+            messages=_messages(ctx),
             temperature=self.cfg.temperature,
             top_p=self.cfg.top_p,
             max_tokens=self.cfg.max_new_tokens,

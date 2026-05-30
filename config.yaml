@@ -51,11 +51,12 @@ grounding:
   near_dup_prefix_chars: 200
 
 generator:
-  backend: vllm                      # "vllm" | "llama_cpp"
-  model: google/gemma-4-27b-it       # HF model ID (vllm); fits A100 80 GB in bf16
-  quantization: null                 # set "bitsandbytes" for A100 40 GB
-  tensor_parallel_size: 1
-  gpu_memory_utilization: 0.85
+  backend: openai_api                # "openai_api" (sglang/vllm/oai) | "vllm" | "llama_cpp"
+  model: Qwen/Qwen2.5-14B-Instruct-AWQ  # served by sglang on Colab A100 80 GB
+  base_url: http://127.0.0.1:30000/v1   # sglang OpenAI-compat endpoint
+  api_key: EMPTY                     # sglang ignores by default
+  max_concurrency: 32                # parallel HTTP requests in a batch
+  request_timeout: 300.0             # per-request timeout, seconds
   temperature: 0.2
   top_p: 0.9
   max_new_tokens: 384

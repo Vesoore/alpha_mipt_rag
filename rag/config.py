@@ -65,7 +65,7 @@ class Grounding(BaseModel):
 
 
 class Generator(BaseModel):
-    backend: str = "vllm"
+    backend: str = "openai_api"  # "openai_api" (sglang/vllm/oai) | "vllm" | "llama_cpp"
     model: str = ""
     model_path: str | None = None  # llama_cpp only
     quantization: str | None = None  # vllm only
@@ -76,6 +76,10 @@ class Generator(BaseModel):
     enforce_eager: bool = False  # vllm only; skip CUDA graph capture (more robust init)
     n_ctx: int | None = None  # llama_cpp only
     n_gpu_layers: int | None = None  # llama_cpp only
+    base_url: str = "http://127.0.0.1:30000/v1"  # openai_api only
+    api_key: str = "EMPTY"  # openai_api only; sglang ignores by default
+    max_concurrency: int = 32  # openai_api only; parallel HTTP requests in batch
+    request_timeout: float = 300.0  # openai_api only; per-request timeout, seconds
     temperature: float
     top_p: float
     max_new_tokens: int
