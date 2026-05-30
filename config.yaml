@@ -1,0 +1,66 @@
+# Single source of truth for the RAG pipeline.
+# All model ids, paths, hyperparams live here. No magic numbers in code.
+
+seed: 42
+
+paths:
+  websites_csv: data/websites.csv
+  questions_csv: data/questions.csv
+  sample_submission_csv: data/sample_submission.csv
+  artifacts_dir: artifacts
+  chunks_parquet: artifacts/chunks.parquet
+  faiss_index: artifacts/faiss.index
+  bm25_pickle: artifacts/bm25.pkl
+  submission_csv: submission.csv
+  models_dir: models
+
+cleaning:
+  min_chars: 50
+  dedup_prefix_chars: 500
+  drop_hosts:
+    - alfabank.by
+    - private.auth.alfabank.ru
+
+chunking:
+  target_tokens: 512
+  overlap_tokens: 64
+  tokenizer_model: BAAI/bge-m3   # used only for token counting
+
+embedder:
+  model: BAAI/bge-m3
+  device: cuda
+  batch_size: 64
+  query_prefix: ""      # bge-m3 does not use e5-style prefixes
+  passage_prefix: ""    # bge-m3 does not use e5-style prefixes
+  normalize: true
+
+retrieval:
+  dense_top_n: 60
+  bm25_top_n: 60
+  rrf_k: 60
+  fused_top_n: 60
+
+reranker:
+  model: BAAI/bge-reranker-v2-m3
+  device: cuda
+  batch_size: 64
+  top_k: 5
+
+grounding:
+  context_max_tokens: 3000
+  near_dup_prefix_chars: 200
+
+generator:
+  backend: vllm                      # "vllm" | "llama_cpp"
+  model: google/gemma-4-27b-it       # HF model ID (vllm); fits A100 80 GB in bf16
+  quantization: null                 # set "bitsandbytes" for A100 40 GB
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.85
+  temperature: 0.2
+  top_p: 0.9
+  max_new_tokens: 384
+  # Strict Russian grounded-answer prompt. Kept in code, not config — see generation.py.
+
+length:
+  answer_max_chars: 600       # ~ 150-token answer; tuned by spot-check
+  no_data_phrase: "В контексте нет данных по этому вопросу."
