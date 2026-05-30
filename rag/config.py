@@ -71,6 +71,8 @@ class Generator(BaseModel):
     quantization: str | None = None  # vllm only
     tensor_parallel_size: int = 1  # vllm only
     gpu_memory_utilization: float = 0.85  # vllm only
+    max_model_len: int | None = None  # vllm only; cap context to shrink KV cache
+    enforce_eager: bool = False  # vllm only; skip CUDA graph capture (more robust init)
     n_ctx: int | None = None  # llama_cpp only
     n_gpu_layers: int | None = None  # llama_cpp only
     temperature: float

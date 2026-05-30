@@ -32,13 +32,17 @@ class Generator:
         from vllm import LLM, SamplingParams
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.cfg.model)
-        self._llm = LLM(
+        llm_kwargs = dict(
             model=self.cfg.model,
             quantization=self.cfg.quantization or None,
             tensor_parallel_size=self.cfg.tensor_parallel_size,
             gpu_memory_utilization=self.cfg.gpu_memory_utilization,
+            enforce_eager=self.cfg.enforce_eager,
             seed=seed,
         )
+        if self.cfg.max_model_len is not None:
+            llm_kwargs["max_model_len"] = self.cfg.max_model_len
+        self._llm = LLM(**llm_kwargs)
         self._sampling_params = SamplingParams(
             temperature=self.cfg.temperature,
             top_p=self.cfg.top_p,
