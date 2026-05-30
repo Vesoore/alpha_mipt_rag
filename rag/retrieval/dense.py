@@ -5,6 +5,7 @@ from pathlib import Path
 import faiss
 import numpy as np
 import polars as pl
+import torch
 from sentence_transformers import SentenceTransformer
 
 from rag.config import Embedder
@@ -13,11 +14,15 @@ from rag.config import Embedder
 class DenseRetriever:
     def __init__(self, cfg: Embedder, model: SentenceTransformer | None = None) -> None:
         self.cfg = cfg
-        self.model = (
-            model
-            if model is not None
-            else SentenceTransformer(cfg.model, device=cfg.device)
-        )
+        if model is not None:
+            self.model = model
+        else:
+            dtype = torch.float16 if cfg.device.startswith("cuda") else torch.float32
+            self.model = SentenceTransformer(
+                cfg.model,
+                device=cfg.device,
+                model_kwargs={"torch_dtype": dtype},
+            )
         self.index: faiss.Index | None = None
         self.dim: int | None = None
 

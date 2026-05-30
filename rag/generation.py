@@ -42,6 +42,9 @@ class Generator:
         )
         if self.cfg.max_model_len is not None:
             llm_kwargs["max_model_len"] = self.cfg.max_model_len
+        if self.cfg.max_num_seqs is not None:
+            llm_kwargs["max_num_seqs"] = self.cfg.max_num_seqs
+        llm_kwargs["swap_space"] = 4
         self._llm = LLM(**llm_kwargs)
         self._sampling_params = SamplingParams(
             temperature=self.cfg.temperature,
