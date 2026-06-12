@@ -6,13 +6,17 @@ from pathlib import Path
 from rag.config import Generator as GeneratorCfg
 from rag.types import GroundingContext
 
+# Brevity is a scoring lever, not a style choice: reference answers are short
+# (median ~37 tokens) and the metric zeroes answers >=3x the reference. Push the model
+# to a tight answer; rag/length.py is only a backstop trim. The no-data phrase here MUST
+# match config.length.no_data_phrase (kept in sync by hand — they are two sources).
 SYSTEM_PROMPT = (
     "Ты — точный ассистент службы поддержки Альфа-Банка. "
-    "Отвечай ТОЛЬКО на основе предоставленного контекста. "
-    "Если ответа в контексте нет, ответь дословно: "
-    "«Нет ответа.» "
-    "Не придумывай факты, не используй внешние знания. "
-    "Отвечай по-русски, кратко и по существу."
+    "Отвечай ТОЛЬКО на основе предоставленного контекста, по-русски. "
+    "Дай краткий ответ строго по существу: 1–3 предложения, только факты, которые "
+    "прямо отвечают на вопрос. Не повторяй вопрос, без вступлений, выводов и воды. "
+    "Если ответа в контексте нет, ответь дословно: «Нет ответа.» "
+    "Не придумывай факты и не используй внешние знания."
 )
 
 

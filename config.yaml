@@ -40,6 +40,12 @@ retrieval:
   rrf_k: 60
   fused_top_n: 60
 
+bm25:
+  stopwords: russian            # bm25s built-in RU stopword list; null/"" to disable
+  stemmer_language: russian     # PyStemmer; stems RU word forms so BM25 matches across inflections
+  # NOTE: rebuild the BM25 index after changing these (scripts/build_index.py) — the stored
+  # vocabulary is stemmed, so index-time and query-time tokenization must match.
+
 reranker:
   model: BAAI/bge-reranker-v2-m3
   device: cuda
@@ -57,11 +63,24 @@ generator:
   api_key: EMPTY                     # sglang ignores by default
   max_concurrency: 32                # parallel HTTP requests in a batch
   request_timeout: 300.0             # per-request timeout, seconds
-  temperature: 0.2
+  temperature: 0.1
   top_p: 0.9
-  max_new_tokens: 1024
+  max_new_tokens: 384                # hard ceiling; references are short, length.py trims the tail
   # Strict Russian grounded-answer prompt. Kept in code, not config — see generation.py.
 
 length:
-  answer_max_chars: 600       # ~ 150-token answer; tuned by spot-check
-  no_data_phrase: "В контексте нет данных по этому вопросу."
+  # References are short (median ~262 chars / ~37 words; 45% < 200 chars). The metric
+  # zeroes any answer >=3x the reference, so keep this tight and TUNE it with the local
+  # scorer (scripts/eval_local.py) before trusting it. A wide cap silently zeroes the
+  # short-reference half of the set.
+  answer_max_chars: 450        # tune via scripts/eval_local.py, do not eyeball
+  no_data_phrase: "Нет ответа."   # must match the no-data string in generation.py SYSTEM_PROMPT
+
+eval:
+  # Local Recall-L scorer (offline proxy for the leaderboard). See rag/eval/recall_l.py.
+  bertscore_lang: ru
+  bertscore_model: null          # null -> multilingual BERT chosen from lang
+  bertscore_num_layers: null
+  length_tokenizer: bert-base-multilingual-cased
+  batch_size: 64
+  idf: false

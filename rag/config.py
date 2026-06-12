@@ -52,6 +52,13 @@ class Retrieval(BaseModel):
     fused_top_n: int
 
 
+class BM25(BaseModel):
+    # Russian is heavily inflected: query verbs ("оформила") rarely surface-match doc
+    # vocabulary ("оформление"). Stemming + stopword removal recovers those lexical hits.
+    stopwords: str | None = None  # bm25s built-in list name, e.g. "russian"; null/"" to disable
+    stemmer_language: str | None = None  # PyStemmer language, e.g. "russian"; null to disable
+
+
 class Reranker(BaseModel):
     model: str
     device: str
@@ -90,6 +97,17 @@ class Length(BaseModel):
     no_data_phrase: str
 
 
+class Eval(BaseModel):
+    # Local Recall-L scorer. The platform's exact backbone/tokenizer are unknown;
+    # these defaults track the leaderboard as a proxy — trust deltas, not absolutes.
+    bertscore_lang: str = "ru"
+    bertscore_model: str | None = None  # None → picked from lang (multilingual BERT)
+    bertscore_num_layers: int | None = None
+    length_tokenizer: str = "bert-base-multilingual-cased"
+    batch_size: int = 64
+    idf: bool = False
+
+
 class Config(BaseModel):
     seed: int
     paths: Paths
@@ -97,10 +115,12 @@ class Config(BaseModel):
     chunking: Chunking
     embedder: Embedder
     retrieval: Retrieval
+    bm25: BM25 = BM25()
     reranker: Reranker
     grounding: Grounding
     generator: Generator
     length: Length
+    eval: Eval = Eval()
 
     def resolve(self, rel: str) -> Path:
         """Resolve a config-relative path against the repo root."""

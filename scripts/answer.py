@@ -56,7 +56,7 @@ def main() -> None:
     dense = DenseRetriever(cfg.embedder)
     dense.load(cfg.resolve(cfg.paths.faiss_index))
 
-    bm25 = BM25Retriever()
+    bm25 = BM25Retriever(cfg.bm25)
     bm25.load(cfg.resolve(cfg.paths.bm25_pickle))
 
     print("[answer] loading reranker…")

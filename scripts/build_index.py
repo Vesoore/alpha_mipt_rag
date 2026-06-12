@@ -39,7 +39,7 @@ def main() -> None:
     print(f"[index] dense: {chunks.height} vectors, dim={dense.dim}")
 
     print("[index] building BM25 index…")
-    bm25 = BM25Retriever()
+    bm25 = BM25Retriever(cfg.bm25)
     bm25.build_index(chunks)
     bm25.save(cfg.resolve(cfg.paths.bm25_pickle))
     print(f"[index] bm25: {chunks.height} docs")
