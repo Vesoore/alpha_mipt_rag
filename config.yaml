@@ -59,7 +59,7 @@ generator:
   request_timeout: 300.0             # per-request timeout, seconds
   temperature: 0.2
   top_p: 0.9
-  max_new_tokens: 384
+  max_new_tokens: 1024
   # Strict Russian grounded-answer prompt. Kept in code, not config — see generation.py.
 
 length:
