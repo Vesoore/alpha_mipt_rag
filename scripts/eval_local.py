@@ -24,7 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 import polars as pl  # noqa: E402
 
 from rag.config import load_config  # noqa: E402
-from rag.eval import recall_l  # noqa: E402
+from rag.eval import recall_l, strip_rag_artifacts  # noqa: E402
 
 
 def _answer_col(df: pl.DataFrame) -> str:
@@ -41,6 +41,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n", type=int, default=None, help="score only the first N joined questions")
     p.add_argument("--out", default=None, help="optional path to dump the per-question breakdown")
     p.add_argument("--device", default=None, help="torch device for BERTScore (cuda/cpu)")
+    p.add_argument(
+        "--raw-refs",
+        action="store_true",
+        help="score against raw references (skip stripping RAG-artifact boilerplate like "
+        "'Согласно Фрагменту N'); default is to clean them",
+    )
     return p.parse_args()
 
 
@@ -64,11 +70,21 @@ def main() -> None:
     if args.n is not None:
         joined = joined.head(args.n)
 
+    predictions = joined["pred"].fill_null("").to_list()
+    references = joined["ref"].fill_null("").to_list()
+    if not args.raw_refs:
+        # The references are a baseline RAG's output and carry citation boilerplate that
+        # distorts recall/length; clean both sides so the comparison is apples-to-apples.
+        n_before = sum(strip_rag_artifacts(r) != r for r in references)
+        references = [strip_rag_artifacts(r) for r in references]
+        predictions = [strip_rag_artifacts(p) for p in predictions]
+        print(f"[eval] cleaned RAG artifacts from {n_before} references (use --raw-refs to skip)")
+
     print(f"[eval] scoring {joined.height} questions (BERTScore on {args.device or 'auto'})…")
     result = recall_l(
         q_ids=joined["q_id"].to_list(),
-        predictions=joined["pred"].fill_null("").to_list(),
-        references=joined["ref"].fill_null("").to_list(),
+        predictions=predictions,
+        references=references,
         lang=ec.bertscore_lang,
         model_type=ec.bertscore_model,
         num_layers=ec.bertscore_num_layers,
