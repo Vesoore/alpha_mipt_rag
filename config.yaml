@@ -22,8 +22,12 @@ cleaning:
     - private.auth.alfabank.ru
 
 chunking:
-  target_tokens: 512
-  overlap_tokens: 64
+  # Experiment 2026-06-13: 512 -> 256 for finer-grained, more on-point chunks (higher
+  # reranker relevance / coverage). REBUILD the index after changing (chunks+faiss+bm25 all
+  # depend on this). Measure rel@1 (eval_retrieval) + the eval_local SUBSTANTIVE bucket.
+  # Smaller chunks ~= 2x more chunks; top_k=5 still fits context_max_tokens easily.
+  target_tokens: 256
+  overlap_tokens: 48
   tokenizer_model: BAAI/bge-m3   # used only for token counting
 
 embedder:
