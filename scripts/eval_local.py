@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out", default=None, help="optional path to dump the per-question breakdown")
     p.add_argument("--device", default=None, help="torch device for BERTScore (cuda/cpu)")
     p.add_argument(
+        "--worst", type=int, default=8, help="show this many worst questions with query/answer/ref text"
+    )
+    p.add_argument(
         "--raw-refs",
         action="store_true",
         help="score against raw references (skip stripping RAG-artifact boilerplate like "
@@ -95,16 +98,38 @@ def main() -> None:
     )
 
     print(result.summary())
-    worst = result.per_question.sort("recall_l").head(5)
-    print("\n[eval] 5 worst questions (q_id, recall_l, l_a/l_r):")
+
+    # Attach query + scored pred/ref text so the worst cases are actually diagnosable:
+    # is a zeroed question a no-data case (ref is a short "Нет ответа") or just too long?
+    questions = pl.read_csv(cfg.resolve(cfg.paths.questions_csv), infer_schema_length=0).select(
+        pl.col("q_id").cast(pl.Utf8), pl.col("query")
+    )
+    scored = pl.DataFrame({"q_id": joined["q_id"], "pred": predictions, "ref": references})
+    diag = result.per_question.join(scored, on="q_id", how="left").join(
+        questions, on="q_id", how="left"
+    )
+
+    def _trunc(s: str, n: int = 140) -> str:
+        s = " ".join((s or "").split())
+        return s if len(s) <= n else s[:n] + "…"
+
+    worst = diag.sort("recall_l").head(args.worst)
+    print(f"\n[eval] {args.worst} worst questions (recall_l | l_a/l_r tok):")
     for row in worst.iter_rows(named=True):
-        print(f"  {row['q_id']}: {row['recall_l']:.3f}  ({row['l_a']}/{row['l_r']} tok)")
+        print(
+            f"\n  q{row['q_id']}  recall_l={row['recall_l']:.3f}  "
+            f"R={row['bert_recall']:.2f}  L={row['length_penalty']:.2f}  "
+            f"({row['l_a']}/{row['l_r']} tok)"
+        )
+        print(f"    Q: {_trunc(row['query'])}")
+        print(f"    A: {_trunc(row['pred'])}")
+        print(f"    R: {_trunc(row['ref'])}")
 
     if args.out:
         out = cfg.resolve(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        result.per_question.write_csv(out)
-        print(f"\n[eval] per-question breakdown → {out}")
+        diag.write_csv(out)
+        print(f"\n[eval] per-question breakdown (with query/pred/ref) → {out}")
 
 
 if __name__ == "__main__":
