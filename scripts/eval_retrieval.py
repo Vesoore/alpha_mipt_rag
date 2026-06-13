@@ -38,6 +38,7 @@ from tqdm import tqdm  # noqa: E402
 
 from rag.chunking import load_chunks  # noqa: E402
 from rag.config import load_config, seed_everything  # noqa: E402
+from rag.eval import is_no_data_answer  # noqa: E402
 from rag.rerank import Reranker  # noqa: E402
 from rag.retrieval.bm25 import BM25Retriever  # noqa: E402
 from rag.retrieval.dense import DenseRetriever  # noqa: E402
@@ -115,10 +116,39 @@ def main() -> None:
         f"  empty retrieval: {empties}/{len(rows)}"
     )
 
+    # Gate viability: do "Нет ответа" reference questions have LOWER rel@1 than substantive
+    # ones? If so, a reranker-score gate cleanly abstains on them. Label from sample_submission.
+    ref_path = cfg.resolve(cfg.paths.sample_submission_csv)
+    refs = pl.read_csv(ref_path, infer_schema_length=0)
+    acol = "answer_new" if "answer_new" in refs.columns else "answer"
+    nodata = {
+        str(r["q_id"])
+        for r in refs.select(pl.col("q_id").cast(pl.Utf8), acol).iter_rows(named=True)
+        if is_no_data_answer(r[acol] or "")
+    }
+    qids = [str(r["q_id"]) for r in rows]
+    is_nd = np.array([q in nodata for q in qids])
+    if is_nd.any() and (~is_nd).any():
+        nd_r1, sub_r1 = rel1[is_nd], rel1[~is_nd]
+        print(
+            f"\n[retr] gate viability (ref = 'Нет ответа' vs substantive):\n"
+            f"  no-data refs    n={is_nd.sum():3d}  rel@1 mean={nd_r1.mean():.4f}  median={np.median(nd_r1):.4f}\n"
+            f"  substantive refs n={(~is_nd).sum():3d}  rel@1 mean={sub_r1.mean():.4f}  median={np.median(sub_r1):.4f}\n"
+            f"  (big gap → a rel@1 threshold can separate them → reranker gate works)\n"
+            f"  gate sweep: abstain when rel@1 < T\n"
+            f"  {'T':>6} {'no-data caught':>16} {'substantive lost':>18}"
+        )
+        for t in (0.55, 0.60, 0.65, 0.70, 0.75):
+            caught = float((nd_r1 < t).mean())   # good: we abstain on no-data
+            lost = float((sub_r1 < t).mean())     # bad: we abstain on answerable
+            print(f"  {t:>6.2f} {caught:>15.0%} {lost:>17.0%}")
+
     if args.out:
         out = cfg.resolve(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
-        pl.DataFrame(per_q).write_csv(out)
+        pl.DataFrame(per_q).with_columns(
+            pl.col("q_id").is_in(list(nodata)).alias("ref_is_no_data")
+        ).write_csv(out)
         print(f"[retr] per-question breakdown → {out}")
 
 

@@ -24,7 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 import polars as pl  # noqa: E402
 
 from rag.config import load_config  # noqa: E402
-from rag.eval import recall_l, strip_rag_artifacts  # noqa: E402
+from rag.eval import is_no_data_answer, recall_l, strip_rag_artifacts  # noqa: E402
 
 
 def _answer_col(df: pl.DataFrame) -> str:
@@ -98,6 +98,34 @@ def main() -> None:
     )
 
     print(result.summary())
+
+    # Split by reference type. Comparing a substantive answer to a "Нет ответа" reference
+    # measures no-data detection, not answer quality — so report the two separately, else
+    # the baseline's abstentions silently drag the headline number down.
+    pq = result.per_question
+    nodata_ids = {
+        qid for qid, r in zip(joined["q_id"].to_list(), references) if is_no_data_answer(r)
+    }
+    answered_set = {qid for qid, p in zip(joined["q_id"].to_list(), predictions) if not is_no_data_answer(p)}
+    sub = pq.filter(~pl.col("q_id").is_in(list(nodata_ids)))          # substantive references
+    nod = pq.filter(pl.col("q_id").is_in(list(nodata_ids)))           # "Нет ответа" references
+    print(
+        f"\n[eval] reference buckets:\n"
+        f"  substantive refs: {sub.height}/{pq.height}  →  Recall-L = {sub['recall_l'].mean():.4f} "
+        f"(R_BERT={sub['bert_recall'].mean():.4f})   ← your real answer quality"
+    )
+    if nod.height:
+        # On no-data refs the metric rewards abstaining. How often did we wrongly answer?
+        over_answered = sum(1 for qid in nodata_ids if qid in answered_set)
+        print(
+            f"  no-data refs:     {nod.height}/{pq.height}  →  Recall-L = {nod['recall_l'].mean():.4f}; "
+            f"you ANSWERED on {over_answered}/{nod.height} of them "
+            f"({over_answered / nod.height:.0%}) instead of abstaining"
+        )
+        print(
+            "  NOTE: high over-answer here is only a problem if those answers are NOT grounded "
+            "in retrieval — check rel@1 (eval_retrieval) before forcing abstention."
+        )
 
     # Attach query + scored pred/ref text so the worst cases are actually diagnosable:
     # is a zeroed question a no-data case (ref is a short "Нет ответа") or just too long?

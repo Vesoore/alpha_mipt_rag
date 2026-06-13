@@ -34,6 +34,14 @@ _INLINE_PATTERNS = [
     r"(?i)\bфрагмент\w*\s*№?\s*\d+\b",
 ]
 
+_NO_DATA_RE = re.compile(r"(?i)^\s*нет\s+ответа\b")
+
+
+def is_no_data_answer(text: str) -> bool:
+    """True if an answer is an abstention ('Нет ответа', with/without trailing dot)."""
+    return bool(_NO_DATA_RE.match(text or ""))
+
+
 _CLAUSE_RE = [re.compile(p) for p in _CLAUSE_PATTERNS]
 _INLINE_RE = [re.compile(p) for p in _INLINE_PATTERNS]
 _LEAD_JUNK_RE = re.compile(r"^[\s,:;.—\-«\"']+")
