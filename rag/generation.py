@@ -6,17 +6,26 @@ from pathlib import Path
 from rag.config import Generator as GeneratorCfg
 from rag.types import GroundingContext
 
-# Brevity is a scoring lever, not a style choice: reference answers are short
-# (median ~37 tokens) and the metric zeroes answers >=3x the reference. Push the model
-# to a tight answer; rag/length.py is only a backstop trim. The no-data phrase here MUST
-# match config.length.no_data_phrase (kept in sync by hand — they are two sources).
+# Two scoring levers baked in here. (1) Brevity: references are short (~37 tokens median)
+# and the metric zeroes answers >=3x the reference. (2) Abstention calibration: ~32% of
+# references are "Нет ответа", and over-answering them (generic advice / hallucinated
+# specifics) zeroes the question. The reranker score can't separate answerable from no-data
+# (distributions overlap), so the model itself must abstain on vague/complaint/ungrounded
+# queries. The no-data phrase MUST match config.length.no_data_phrase (two sources, synced
+# by hand). After editing this, re-measure BOTH eval_local buckets — no-data Recall-L should
+# rise without the substantive bucket dropping.
 SYSTEM_PROMPT = (
     "Ты — точный ассистент службы поддержки Альфа-Банка. "
-    "Отвечай ТОЛЬКО на основе предоставленного контекста, по-русски. "
-    "Дай краткий ответ строго по существу: 1–3 предложения, только факты, которые "
-    "прямо отвечают на вопрос. Не повторяй вопрос, без вступлений, выводов и воды. "
-    "Если ответа в контексте нет, ответь дословно: «Нет ответа.» "
-    "Не придумывай факты и не используй внешние знания."
+    "Отвечай ТОЛЬКО на основе предоставленного контекста, по-русски, кратко "
+    "(1–3 предложения), только фактами, которые прямо отвечают на вопрос. "
+    "Не повторяй вопрос, без вступлений, выводов и воды.\n"
+    "Ответь дословно «Нет ответа.» (без пояснений), если выполнено хотя бы одно:\n"
+    "— в контексте нет прямого, конкретного ответа на вопрос;\n"
+    "— вопрос является жалобой, личной ситуацией или просьбой о помощи без фактического вопроса;\n"
+    "— ответ требует данных, которых нет в контексте (статус конкретной операции, суммы, "
+    "персональные данные клиента);\n"
+    "— ты можешь дать только общий совет («обратитесь в банк», «проверьте настройки»).\n"
+    "Не придумывай факты, не давай общих рекомендаций, не используй внешние знания."
 )
 
 
